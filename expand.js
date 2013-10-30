@@ -1,6 +1,7 @@
 var sp = require('../lib/libspotify');
 var cred = require('../spotify_key/passwd');
 var fs = require('fs');
+var async = require('async');
 
 var singleTrackToString = function(track) {
     var str ="";
@@ -24,7 +25,7 @@ var readableAlbumTracks = function(albumTracks) {
         var album = albumTracks[i];
         for (var j = 0; j < album.length; j++) {
             var track = album[j];
-            all[i * j] = singleTrackToString(track);
+            all.push(singleTrackToString(track));
         }
     }
     return all.join("\n");
@@ -38,44 +39,31 @@ var getAlbums = function(tracks) {
     return albums;
 };
 
-var getAlbumTracks = function(albums) {
-    var albumTracks = [];
-   
-    for (var i = 0; i < albums.length; i++) {
-        console.log(albums[i].name + " - - " + albums[i].artist.name); 
-        var search = new sp.Search('album:"' + albums[i].name + '" artist:"' + albums[i].artist.name + '"');
-        search.execute();
-        search.once('ready', function() {
-            if (search.tracks === undefined || !search.tracks.length) {
-                console.log("no tracks found");
-            } else {
-                for (var i = 0; i < search.tracks.length; i++) {
-                    console.log(search.tracks[i].title);
-                }
-            }
+var searchForTracks = function(query, cb) {
+    var search = new sp.Search(query);
+    search.execute();       
+    search.once('ready', function() {
+        if (search.tracks === undefined || !search.tracks.length) {
+            console.log("no tracks found");
+            cb([]);
+        } else {
+            cb(search.tracks);
+        }
+    });
+}
+
+var getAlbumTracks = function(albums, cb) {
+    albumTracks = [];
+    async.forEach(albums, function(album, callback) {
+        var query = 'album:"' + album.name + '" artist:"' + album.artist.name + '"';
+        searchForTracks(query, function(tracks) {
+            albumTracks.push(tracks);
+            callback();
         });
-        console.log("---");
-    }
-         
-    /*
-    for (var i = 0; i < albums.length; i++) {
-        var tracks = [];
-        var searchStr2 = albums[i].name + " " + albums[i].artist.name;
-        var searchStr = 'album:"Skylarking" artist:"XTC"';
-        var search = new sp.Search(searchStr);
-        search.execute();
-        search.once('ready', function() {
-            if (search.tracks === undefined || !search.tracks.length) {
-                console.log('no tracks found');
-            } else {
-                for (var j = 0; j < search.tracks.length; j++) {
-                    tracks[j] = search.tracks[i];
-                }
-            }
-            albumTracks[i] = tracks;
-        });
-    }*/
-    return albumTracks;
+    }, function(err) {
+        console.log('done');
+        cb(albumTracks);
+    });
 };
 
 session = new sp.Session({
@@ -92,7 +80,9 @@ session.once('login', function(err) {
     	if (err) this.emit('error', err);
         console.log(readableTracks(tracks));
         var albums = getAlbums(tracks);
-        var albumTracks = getAlbumTracks(albums);
+        getAlbumTracks(albums, function(albumTracks, err) {
+            console.log(readableAlbumTracks(albumTracks)); 
+        });
     });
 });
 
